@@ -1,0 +1,191 @@
+	WSL -
+	Microsoft Storelinux- ubantu
+	sudo apt-get install toolname
+
+	sudo apt-get install bwa
+	bwa  press enter  manual
+	bwa --version
+	
+	sudo apt-get install fastqc
+
+	sudo apt-get install fastp
+	fastp --version
+
+	sudo apt-get install samtools
+
+	wget https://github.com/broadinstitute/picard/releases/latest/download/picard.jar -O ~/picard.jar
+	java  -jar ~/picard.jar --version
+
+	
+
+	###  Data downloading
+	wget -c ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR235/009/ERR2356709/ERR2356709_1.fastq.gz
+	wget -c ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR235/009/ERR2356709/ERR2356709_2.fastq.gz
+
+	### Unzip: Extract the compressed files
+	gunzip *.gz
+	(bunzip2 filename)
+
+	OR
+	gunzip ERR2356709_1.fastq.gz ERR2356709_2.fastq.gz
+	
+##QC
+	fastqc *.fastq.gz
+
+	### Check quality 
+ fastqc ERR2356709_1.fastq  ERR2356709_2.fastq
+
+## Trimming
+	fastap -i ERR2356709_1.fastq -o Trim_ERR2356709_1.fastq -I ERR2356709_2.fastq -O Trim_ERR2356709_2.fastq 
+--detect_adapter_for_pe --thread 2 --html fastp_reort.html -q 30 -l 50
+
+
+## adapter list 
+fastap -i ERR2356709_1.fastq -o Trim_ERR2356709_1.fastq -I ERR2356709_2.fastq -O Trim_ERR2356709_2.fastq 
+--adapter_fasta adapter_seq.fasta --thread 2 --html fastp_reort.html -q 30 -l 50
+
+
+#download reference  file chr17
+wget -c https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr17.fa.gz
+
+# Uncompress
+gunzip chr17.fa.gz
+
+## indexing of ref
+
+1-1000
+1-100
+1,30,20,50,44,77,67,94,12,32,15,20
+
+1-10 11-20 21-30
+bwa index -a bwtsw chr17.fa
+
+###BWA Index Algorithms
+
+Algorithms depending on genome size:
+
+is → Ideal for small genomes (like bacteria, viruses, small fungi).
+
+bwtsw → For large genomes (human, mouse, plants).
+
+rb2 → The newer ropebwt2 algorithm (fast and efficient for medium-to-large genomes).
+
+##Alignmnet
+bwa mem -t 2 chr17.fa Trim_ERR2356709_1.fast Trim_ERR2356709_2.fast >bwa_ERR2356709.bam
+
+# Sorting
+samtools sort bwa_ERR2356709.bam >sorted_ERR2356709.bam
+
+# optional BAM -->sorted_BAM
+samtools view sorted_ERR2356709.bam >sorted_ERR2356709.sam
+
+
+## remove duplicates
+samtools rmdup -sS sorted_ERR2356709.bam rmdup_ERR2356709.bam
+
+#output deduplicated bam file
+
+## variation_calling
+sudo apt-get install picard-tools
+
+picard.jar CreateSequenceDictionary R=chr17.fasta O=chr17.dict
+
+## Convert unique reads--picard-compatible BAM format
+------------------------------------------------------------------------------------------------
+Parameter	Example Values			Use Case
+RGLB	RNAseq_Lib, Exome_Lib1, Lib_DNAseq	Different sequencing libraries in a project.
+RGPL	ILLUMINA, PACBIO, OXFORD_NANOPORE	Specifies sequencing technology used.
+RGPU	HSQ7000_Lane2, unit2, FC12345.3		Helps distinguish flow cells/lane IDs.
+RGSM	Sample1, Patient_X, ERR1234567		Unique name for each sample.
+------------------------------------------------------------------------------------------------
+picard-tools AddOrReplaceReadGroups I=rmdup_ERR2356709.bam O=picard_output.bam RGLB=lib1 RGPL=illumina RGPU=unit1 RGSM=ERR2356709 SORT_ORDER=coordinate CREATE_INDEX=true VALIDATION_STRINGENCY=LENIENT
+
+##strict
+## Lenient
+##silent
+
+
+GT 0/0 homozygous ref
+0/1  heterz 
+1/1 homozyg  alternate --- both allel are variant
+
+###GATK
+
+
+# Index the reference genome 
+samtools faidx ch17.fa 
+
+#path of local jar file -->
+/mnt/d/DrOMICSLabs/DNA_SEQ/Variant_Calling/gatk-4.3.0.0/gatk-package-4.3.0.0-local.jar
+
+## index reference fasta
+
+samtools faidx chr17.fa
+
+## VCF file with gatk
+
+java -jar /mnt/d/DrOMICSLabs/DNA_SEQ/Variant_Calling/gatk-4.3.0.0/gatk-package-4.3.0.0-local.jar HaplotypeCaller -R chr17.fa -I picard_output.bam -O GATK_output.vcf
+
+
+##SNPEFF
+#path
+/mnt/d/DrOMICSLabs/DNA_SEQ/Variant_Calling/snpEff/SnpSift.jar
+
+#Variant Filteraration:
+java -jar /mnt/d/DrOMICSLabs/DNA_SEQ/Variant_Calling/snpEff/SnpSift.jar " ((QUAL >=30) &(DP >=10) & (MQ >=30))" > filtered_variants.vcf
+
+---------------------------------------------------------
+###################### Revision ################################
+Variant Calling → Pathogenicity → Visualization
+
+1. Input & Alignment
+
+FASTQ → BAM
+
+Align reads (BWA)
+
+Output: .BAM (aligned reads).
+
+2. Variant Calling
+
+BAM → VCF
+
+Use GATK HaplotypeCaller 
+
+Output: .VCF (variants).
+
+3. Annotation & Filtering
+
+VCF → SnpEff / SnpSift → functional annotation, filtering.
+
+VEP (Ensembl) → effect prediction (gene, consequence).
+
+Pathogenicity tools:
+
+SIFT → Deleterious / Tolerated.
+
+(PolyPhen-2 → Probably damaging / Benign. and CADD → Combined pathogenicity score.)
+
+4. Visualization
+
+IGV → Load reference genome + BAM + VCF to inspect variants visually.
+
+Workflow in One Line
+
+FASTQ → BAM → VCF → SnpEff/SnpSift → VEP (SIFT) → IGV
+
+
+*** Important links
+
+****Sniff
+https://pcingola.github.io/SnpEff/download/
+https://asia.ensembl.org/info/genome/variation/prediction/protein_function.html
+
+*** VEP
+https://asia.ensembl.org/Tools/VEP
+https://www.ensembl.org/info/docs/tools/vep/online/VEP_web_documentation.pdf
+
+
+***IGV
+https://igv.org/doc/desktop/#DownloadPage/
+
